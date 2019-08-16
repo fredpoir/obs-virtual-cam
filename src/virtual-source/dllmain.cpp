@@ -11,17 +11,24 @@ STDAPI AMovieSetupRegisterServer(CLSID clsServer, LPCWSTR szDescription,
 	LPCWSTR szServerType = L"InprocServer32");
 STDAPI AMovieSetupUnregisterServer(CLSID clsServer);
 
-
+#define NUM_VIDEO_FILTERS 4
 
 // {27B05C2D-93DC-474A-A5DA-9BBA34CB2A9C}
 DEFINE_GUID(CLSID_OBS_VirtualV,
 	0x27b05c2d, 0x93dc, 0x474a, 0xa5, 0xda, 0x9b, 0xba, 0x34, 0xcb, 0x2a, 0x9c);
 
+DEFINE_GUID(CLSID_OBS_VirtualV2,
+	0x27b05c2d, 0x93dc, 0x474a, 0xa5, 0xda, 0x9b, 0xba, 0x34, 0xcb, 0x2a, 0x9d);
+
+DEFINE_GUID(CLSID_OBS_VirtualV3,
+	0x27b05c2d, 0x93dc, 0x474a, 0xa5, 0xda, 0x9b, 0xba, 0x34, 0xcb, 0x2a, 0x9e);
+
+DEFINE_GUID(CLSID_OBS_VirtualV4,
+	0x27b05c2d, 0x93dc, 0x474a, 0xa5, 0xda, 0x9b, 0xba, 0x34, 0xcb, 0x2a, 0x9f);
+
 // {B750E5CD-5E7E-4ED3-B675-A5003C439997}
 DEFINE_GUID(CLSID_OBS_VirtualA,
 	0xb750e5cd, 0x5e7e, 0x4ed3, 0xb6, 0x75, 0xa5, 0x0, 0x3c, 0x43, 0x99, 0x97);
-
-
 
 const AMOVIESETUP_MEDIATYPE AMSMediaTypesV =
 {
@@ -70,64 +77,84 @@ const AMOVIESETUP_FILTER AMSFilterV =
 	&AMSPinV
 };
 
-const AMOVIESETUP_FILTER AMSFilterA =
+const AMOVIESETUP_FILTER AMSFilterV2 =
 {
-	&CLSID_OBS_VirtualA,  // Filter CLSID
-	L"OBS Virtual Audio",     // String name
-	MERIT_DO_NOT_USE,      // Filter merit
-	1,                     // Number pins
-	&AMSPinA             // Pin details
+	&CLSID_OBS_VirtualV2,
+	L"OBS Virtual Cam2",
+	MERIT_DO_NOT_USE,
+	1,
+	&AMSPinV
 };
 
-CFactoryTemplate g_Templates[] =
+const AMOVIESETUP_FILTER AMSFilterV3 =
+{
+	&CLSID_OBS_VirtualV3,
+	L"OBS Virtual Cam3",
+	MERIT_DO_NOT_USE,
+	1,
+	&AMSPinV
+};
+
+const AMOVIESETUP_FILTER AMSFilterV4 =
+{
+	&CLSID_OBS_VirtualV4,
+	L"OBS Virtual Cam4",
+	MERIT_DO_NOT_USE,
+	1,
+	&AMSPinV
+};
+
+const AMOVIESETUP_FILTER AMSFilterA =
+{
+	&CLSID_OBS_VirtualA,  
+	L"OBS Virtual Audio",     
+	MERIT_DO_NOT_USE,      
+	1,                     
+	&AMSPinA             
+};
+
+CFactoryTemplate g_Templates[NUM_VIDEO_FILTERS + 1] =
 {
 	{
-		L"OBS Virtual Cam",
+		L"OBS-Camera",
 		&CLSID_OBS_VirtualV,
-		CVCam::CreateInstance,
+		CreateInstance,
 		NULL,
 		&AMSFilterV
 	},
 	{
-		L"OBS Virtual Audio",
+		L"OBS-Camera2",
+		&CLSID_OBS_VirtualV2,
+		CreateInstance2,
+		NULL,
+		&AMSFilterV2
+	},
+	{
+		L"OBS-Camera3",
+		&CLSID_OBS_VirtualV3,
+		CreateInstance3,
+		NULL,
+		&AMSFilterV3
+	},
+	{
+		L"OBS-Camera4",
+		&CLSID_OBS_VirtualV4,
+		CreateInstance4,
+		NULL,
+		&AMSFilterV4
+	},
+	{
+		L"OBS-Audio",
 		&CLSID_OBS_VirtualA,
 		CVAudio::CreateInstance,
 		NULL,
 		&AMSFilterA
-	},
+	}
 };
 
 int g_cTemplates = sizeof(g_Templates) / sizeof(g_Templates[0]);
 
-void RegisterDummyDevicePath()
-{
-	HKEY hKey;
-	std::string str_video_capture_device_key(
-		"SOFTWARE\\Classes\\CLSID\\{860BB310-5D01-11d0-BD3B-00A0C911CE86}\\Instance\\");
-
-	LPOLESTR olestr_CLSID;
-	StringFromCLSID(CLSID_OBS_VirtualV, &olestr_CLSID);
-
-	std::wstring wstr_CLSID(olestr_CLSID);
-
-	int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr_CLSID[0], 
-		(int)wstr_CLSID.size(), NULL, 0, NULL, NULL);
-	std::string str2(size_needed, 0);
-	WideCharToMultiByte(CP_UTF8, 0, &wstr_CLSID[0], (int)wstr_CLSID.size(), 
-		&str2[0], size_needed, NULL, NULL);
-
-	str_video_capture_device_key.append(str2);
-	
-	RegOpenKeyEx(HKEY_LOCAL_MACHINE, str_video_capture_device_key.c_str(), 0,
-		KEY_ALL_ACCESS, &hKey);
-		
-	LPCTSTR value = TEXT("DevicePath");
-	LPCTSTR data = "obs:virtualcam";
-	RegSetValueEx(hKey, value, 0, REG_SZ, (LPBYTE)data, strlen(data) + 1);
-	RegCloseKey(hKey);
-}
-
-STDAPI RegisterFilters(BOOL bRegister)
+STDAPI RegisterFilters(BOOL bRegister,int reg_video_filters)
 {
 	HRESULT hr = NOERROR;
 	WCHAR achFileName[MAX_PATH];
@@ -141,41 +168,51 @@ STDAPI RegisterFilters(BOOL bRegister)
 		achFileName, NUMELMS(achFileName));
 
 	hr = CoInitialize(0);
-	if (bRegister){
-		hr = AMovieSetupRegisterServer(CLSID_OBS_VirtualV, L"OBS-Camera", 
-			achFileName, L"Both", L"InprocServer32");
-		hr |= AMovieSetupRegisterServer(CLSID_OBS_VirtualA, L"OBS-Audio",
-			achFileName, L"Both", L"InprocServer32");
+	if (bRegister) {
+
+		hr = AMovieSetupRegisterServer(CLSID_OBS_VirtualA, L"OBS-Audio",
+			achFileName);
+
+		for (int i = 0; i < reg_video_filters; i++) {
+			hr |= AMovieSetupRegisterServer(*(g_Templates[i].m_ClsID),
+				g_Templates[i].m_Name, achFileName);
+		}
+
 	}
 
-	if (SUCCEEDED(hr)){
+	if (SUCCEEDED(hr)) {
 
 		IFilterMapper2 *fm = 0;
 		hr = CreateComObject(CLSID_FilterMapper2, IID_IFilterMapper2, fm);
 
-		if (SUCCEEDED(hr)){
-			if (bRegister){
-				IMoniker *moniker_video = 0, *moniker_audio = 0;
+		if (SUCCEEDED(hr)) {
+			if (bRegister) {
+				IMoniker *moniker_audio = 0;
 				REGFILTER2 rf2;
 				rf2.dwVersion = 1;
 				rf2.dwMerit = MERIT_DO_NOT_USE;
 				rf2.cPins = 1;
-				rf2.rgPins = &AMSPinV;
-				hr = fm->RegisterFilter(CLSID_OBS_VirtualV, L"OBS-Camera", 
-					&moniker_video, &CLSID_VideoInputDeviceCategory, NULL, &rf2);
 				rf2.rgPins = &AMSPinA;
-				hr = fm->RegisterFilter(CLSID_OBS_VirtualA, L"OBS-Audio", 
+				hr = fm->RegisterFilter(CLSID_OBS_VirtualA, L"OBS-Audio",
 					&moniker_audio, &CLSID_AudioInputDeviceCategory, NULL, &rf2);
+				rf2.rgPins = &AMSPinV;
+				for (int i = 0; i < reg_video_filters; i++) {
+					IMoniker *moniker_video = 0;
+					hr = fm->RegisterFilter(*(g_Templates[i].m_ClsID), 
+						g_Templates[i].m_Name, &moniker_video, 
+						&CLSID_VideoInputDeviceCategory, NULL, &rf2);
+				}
 
-			}else{
-				hr = fm->UnregisterFilter(&CLSID_AudioInputDeviceCategory, 0, CLSID_OBS_VirtualA);
-				hr = fm->UnregisterFilter(&CLSID_VideoInputDeviceCategory, 0, CLSID_OBS_VirtualV);
+			} else {
+				hr = fm->UnregisterFilter(&CLSID_AudioInputDeviceCategory, 0, 
+					CLSID_OBS_VirtualA);
+
+				for (int i = 0; i < reg_video_filters; i++) {
+					hr = fm->UnregisterFilter(&CLSID_VideoInputDeviceCategory, 0,
+						*(g_Templates[i].m_ClsID));
+				}
 			}
 		}
-
-		// Dummy DevicePath conflicts with Skype
-		/*if (SUCCEEDED(hr) && bRegister)
-			RegisterDummyDevicePath();*/
 
 		if (fm)
 			fm->Release();
@@ -183,7 +220,9 @@ STDAPI RegisterFilters(BOOL bRegister)
 
 	if (SUCCEEDED(hr) && !bRegister){
 		hr = AMovieSetupUnregisterServer(CLSID_OBS_VirtualA);
-		hr = AMovieSetupUnregisterServer(CLSID_OBS_VirtualV);
+		for (int i = 0; i < reg_video_filters; i++) {
+			hr = AMovieSetupUnregisterServer(*(g_Templates[i].m_ClsID));
+		}
 	}
 
 	CoFreeUnusedLibraries();
@@ -191,14 +230,28 @@ STDAPI RegisterFilters(BOOL bRegister)
 	return hr;
 }
 
+STDAPI DllInstall(BOOL bInstall, _In_opt_ LPCWSTR pszCmdLine)
+{
+	if (!bInstall)
+		return RegisterFilters(FALSE, NUM_VIDEO_FILTERS);
+	else if (lstrcmpW(pszCmdLine, L"1") == 0)
+		return RegisterFilters(TRUE, 1);
+	else if (lstrcmpW(pszCmdLine, L"2") == 0)
+		return RegisterFilters(TRUE, 2);
+	else if (lstrcmpW(pszCmdLine, L"3") == 0)
+		return RegisterFilters(TRUE, 3);
+	else
+		return RegisterFilters(TRUE, NUM_VIDEO_FILTERS);
+}
+
 STDAPI DllRegisterServer()
 {
-	return RegisterFilters(TRUE);
+	return RegisterFilters(TRUE, NUM_VIDEO_FILTERS);
 }
 
 STDAPI DllUnregisterServer()
 {
-	return RegisterFilters(FALSE);
+	return RegisterFilters(FALSE, NUM_VIDEO_FILTERS);
 }
 
 extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE, ULONG, LPVOID);

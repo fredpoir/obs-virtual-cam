@@ -5,6 +5,9 @@ bool init_flip_filter(FlipContext* ctx,int width, int height, int format)
 	char args[512];
 	int ret = -1;
 
+	if (ctx->init)
+		return false;
+
 	avfilter_register_all();
 
 	AVFilter *buffersrc = avfilter_get_by_name("buffer");
@@ -18,14 +21,24 @@ bool init_flip_filter(FlipContext* ctx,int width, int height, int format)
 	sprintf(args,
 		"video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
 		width, height, format, 1, 30, 1, 1);
-	ret = avfilter_graph_create_filter(&ctx->buffersrc_ctx, buffersrc, "in",
-		args, NULL, ctx->filter_graph);
+
+
+	if ((ret = avfilter_graph_create_filter(&ctx->buffersrc_ctx, buffersrc, "in",
+		args, NULL, ctx->filter_graph) < 0)){
+		avfilter_graph_free(&ctx->filter_graph);
+		return false;
+	}
 
 	buffersink_params = av_buffersink_params_alloc();
 	buffersink_params->pixel_fmts = pix_fmts;
 	ret = avfilter_graph_create_filter(&ctx->buffersink_ctx, buffersink, "out",
 		NULL, buffersink_params, ctx->filter_graph);
 	av_free(buffersink_params);
+
+	if (ret < 0) {
+		avfilter_graph_free(&ctx->filter_graph);
+		return false;
+	}
 
 	outputs->name = av_strdup("in");
 	outputs->filter_ctx = ctx->buffersrc_ctx;
@@ -53,19 +66,27 @@ bool init_flip_filter(FlipContext* ctx,int width, int height, int format)
 	ctx->frame_in->width = width;
 	ctx->frame_in->height = height;
 	ctx->frame_in->format = format;
+	ctx->init = true;
 	return true;
 }
 
 bool release_flip_filter(FlipContext* ctx)
 {
+	if (!ctx->init)
+		return false;
+
 	av_frame_free(&ctx->frame_out);
 	av_frame_free(&ctx->frame_in);
 	avfilter_graph_free(&ctx->filter_graph);
+	ctx->init = false;
 	return true;
 }
 
 void flip_frame(FlipContext* ctx, uint8_t** src, uint32_t* linesize)
 {
+	if (!ctx->init)
+		return;
+
 	for (int i = 0; i < 8; i++){
 		ctx->frame_in->data[i] = src[i];
 		ctx->frame_in->linesize[i] = linesize[i];
@@ -77,6 +98,9 @@ void flip_frame(FlipContext* ctx, uint8_t** src, uint32_t* linesize)
 
 void unref_flip_frame(FlipContext* ctx)
 {
+	if (!ctx->init)
+		return;
+
 	for (int i = 0; i < 8; i++){
 		ctx->frame_in->data[i] = NULL;
 		ctx->frame_in->linesize[i] = 0;

@@ -11,12 +11,15 @@ extern "C"
 #define DECLARE_PTR(type, ptr, expr) type* ptr = (type*)(expr);
 
 EXTERN_C const GUID CLSID_OBS_VirtualV;
+EXTERN_C const GUID CLSID_OBS_VirtualV2;
+EXTERN_C const GUID CLSID_OBS_VirtualV3;
+EXTERN_C const GUID CLSID_OBS_VirtualV4;
 
 class CVCamStream;
 
 struct format
 {
-	format(int width_, int height_, int64_t time_per_frame_){
+	format(int width_, int height_, int64_t time_per_frame_) {
 		width = width_;
 		height = height_;
 		time_per_frame = time_per_frame_;
@@ -26,6 +29,10 @@ struct format
 	int64_t time_per_frame;
 };
 
+extern CUnknown * WINAPI CreateInstance(LPUNKNOWN lpunk, HRESULT *phr);
+extern CUnknown * WINAPI CreateInstance2(LPUNKNOWN lpunk, HRESULT *phr);
+extern CUnknown * WINAPI CreateInstance3(LPUNKNOWN lpunk, HRESULT *phr);
+extern CUnknown * WINAPI CreateInstance4(LPUNKNOWN lpunk, HRESULT *phr);
 
 class CVCam : public CSource
 {
@@ -34,15 +41,17 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	//  IUnknown
 	//////////////////////////////////////////////////////////////////////////
-	static CUnknown * WINAPI CreateInstance(LPUNKNOWN lpunk, HRESULT *phr);
+	
 	STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void **ppv);
 	IFilterGraph *GetGraph() { return m_pGraph; }
 	FILTER_STATE GetState(){ return m_State; }
-	CVCam(LPUNKNOWN lpunk, HRESULT *phr);
+	CVCam(LPUNKNOWN lpunk, HRESULT *phr, const GUID id, int mode);
+protected:
+	CVCamStream *stream = nullptr;
 
 };
 
-class CVCamStream : public CSourceStream, public IAMStreamConfig,public IKsPropertySet
+class CVCamStream : public CSourceStream, public IAMStreamConfig, public IKsPropertySet
 {
 public:
 
@@ -83,7 +92,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	//  CSourceStream
 	//////////////////////////////////////////////////////////////////////////
-	CVCamStream(HRESULT *phr, CVCam *pParent, LPCWSTR pPinName);
+	CVCamStream(HRESULT *phr, CVCam *pParent, LPCWSTR pPinName, int mode);
 	~CVCamStream();
 
 	HRESULT FillBuffer(IMediaSample *pms);
@@ -93,34 +102,36 @@ public:
 	HRESULT SetMediaType(const CMediaType *pmt);
 	HRESULT OnThreadCreate(void);
 	HRESULT OnThreadDestroy(void);
-
+	
 private:
 
-	bool CheckObsSetting();
+	bool ListSupportFormat(void);
+	bool CheckObsSetting(void);
 	bool ValidateResolution(long width, long height);
-	bool ListSupportFormat();
-	void SetConvertContext();
+	void SetConvertContext(void);
 
 	CVCam *parent;
 	std::deque<format> format_list;
 
 	//for Fillbuffer() use
 	share_queue queue = {};
-	REFERENCE_TIME  prev_end_ts =0;
+	bool reset_mode = false;
+	int queue_mode = 0;
+	int format = 0;
+	uint8_t* dst;
+	uint32_t frame_width = 0;
+	uint32_t frame_height = 0;
 	uint64_t obs_start_ts = 0;
 	uint64_t dshow_start_ts = 0;
-	uint8_t* dst;
-	int format = 0;
-	int frame_width = 0;
-	int frame_height = 0;
-	int64_t time_perframe = 0;
+	uint64_t time_perframe = 0;
+	REFERENCE_TIME  prev_end_ts = 0;
 
 	//obs format related
 	bool use_obs_format_init = false;
 	int obs_format = 0;
-	int obs_width = 1920;
-	int obs_height = 1080;
-	int64_t obs_frame_time = 333333;
+	uint32_t obs_width = 1920;
+	uint32_t obs_height = 1080;
+	uint64_t obs_frame_time = 333333;
 	dst_scale_context scale_info;
 
 };
